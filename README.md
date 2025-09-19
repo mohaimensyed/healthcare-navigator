@@ -291,3 +291,7 @@ uvicorn app.main:app --reload
 ## 📝 License
 
 This project was created as a coding exercise for Outfox Health, demonstrating modern Python web development, AI integration, and healthcare data processing capabilities.
+
+## Demo
+
+![Healthcare Cost Navigator Demo](demo/shortclip.gif)
