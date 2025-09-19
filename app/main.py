@@ -241,7 +241,6 @@ async def root():
         
         <div class="container">
             <h2>🔍 Search Providers</h2>
-            <p>Search uses enhanced ranking: 40% cost + 35% rating + 15% distance + 10% experience</p>
             <form id="searchForm">
                 <div class="form-group">
                     <label>DRG Code or Description:</label>
@@ -265,7 +264,6 @@ async def root():
         
         <div class="container">
             <h2>🤖 AI Assistant</h2>
-            <p>Ask questions like "cheapest", "best rated", "best value", or "nearest" - the AI will optimize results accordingly</p>
             <form id="askForm">
                 <div class="form-group">
                     <label>Ask a question about healthcare costs and quality:</label>

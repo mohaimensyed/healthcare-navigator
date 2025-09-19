@@ -399,6 +399,8 @@ class AIService:
         3. Explains the ranking rationale based on the query intent: {intent}
         4. Keeps it conversational and confident
         5. For nearby results, present them as the best available options
+        6. IMPORTANT: Use plain text formatting only - NO markdown, asterisks, or special formatting
+        7. Write in natural paragraphs without bullet points or special characters
         
         Answer:
         """
@@ -688,6 +690,8 @@ class AIService:
         8. Keep response concise but informative (3-5 sentences)
         9. Highlight the top 2-3 options based on the intent
         10. Don't mention technical database details or search limitations
+        11. IMPORTANT: Use plain text formatting only - NO markdown, asterisks, or special formatting
+        12. Write in natural paragraphs without bullet points or special characters
         
         Answer:
         """
