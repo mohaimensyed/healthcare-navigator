@@ -1,1 +1,545 @@
+# Healthcare Cost Navigator - Git Ignore File
+
+# =============================================================================
+# ENVIRONMENT & SECRETS
+# =============================================================================
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# Environment variables backup
+.env.backup
+.env.old
+
+# =============================================================================
+# PYTHON
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# PyCharm
+.idea/
+
+# =============================================================================
+# DATABASES
+# =============================================================================
+
+# SQLite databases
+*.sqlite
+*.sqlite3
+*.db
+healthcare.db
+healthcare_test.db
+dev_healthcare.db
+
+# PostgreSQL dumps
+*.sql
+*.backup
+*.dump
+
+# Database migration files (if using Alembic)
+# Uncomment if you don't want to track migrations
+# alembic/versions/*.py
+
+# =============================================================================
+# DATA FILES
+# =============================================================================
+
+# Large data files
+data/*.csv
+data/*.xlsx
+data/*.json
+data/*.parquet
+data/*.feather
+
+# Keep sample data for testing (uncomment to track specific files)
+# !data/sample_small.csv
+# !data/test_data.csv
+
+# Processed data
+processed_data/
+data/processed/
+data/clean/
+data/temp/
+
+# Data backups
+*.backup
+data_backup_*/
+
+# =============================================================================
+# LOGS
+# =============================================================================
+
+# Application logs
+logs/
+*.log
+*.log.*
+log_*.txt
+
+# FastAPI logs
+access.log
+error.log
+app.log
+uvicorn.log
+
+# ETL logs
+etl_*.log
+data_processing_*.log
+
+# =============================================================================
+# DOCKER
+# =============================================================================
+
+# Docker volumes
+docker-volumes/
+.docker/
+
+# Docker Compose override files
+docker-compose.override.yml
+docker-compose.local.yml
+docker-compose.prod.yml
+
+# Docker build context
+.dockerignore
+
+# =============================================================================
+# OPERATING SYSTEM
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# DEVELOPMENT TOOLS
+# =============================================================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Sublime Text
+*.tmlanguage.cache
+*.tmPreferences.cache
+*.stTheme.cache
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+[._]ss[a-gi-z]
+[._]sw[a-p]
+Session.vim
+Sessionx.vim
+.netrwhist
+*~
+tags
+[._]*.un~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+.org-id-locations
+*_archive
+*_flymake.*
+/eshell/history
+/eshell/lastdir
+/elpa/
+*.rel
+
+# =============================================================================
+# TEMPORARY FILES
+# =============================================================================
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Cache files
+.cache/
+*.cache
+.cached_data/
+
+# Lock files
+*.lock
+.lock
+
+# =============================================================================
+# CONFIGURATION & SECRETS
+# =============================================================================
+
+# API keys and secrets
+secrets/
+credentials/
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Configuration files with secrets
+config/local.yaml
+config/development.yaml
+config/production.yaml
+local_config.py
+private_config.py
+
+# =============================================================================
+# DOCUMENTATION
+# =============================================================================
+
+# Generated documentation
+docs/build/
+docs/_build/
+documentation/build/
+
+# Documentation drafts
+*.draft.md
+NOTES.md
+TODO.md
+ROADMAP.md
+
+# =============================================================================
+# MONITORING & ANALYTICS
+# =============================================================================
+
+# Monitoring data
+monitoring/
+metrics/
+*.metrics
+
+# Error tracking
+errors/
+crashdumps/
+
+# Performance profiling
+*.prof
+profile_output/
+
+# =============================================================================
+# DEPLOYMENT
+# =============================================================================
+
+# Deployment scripts with secrets
+deploy_prod.sh
+deploy_staging.sh
+*.deploy
+
+# Kubernetes secrets
+k8s-secrets.yaml
+secrets.yaml
+
+# Terraform state files
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Ansible vault files
+vault.yml
+*.vault
+
+# =============================================================================
+# BACKUP FILES
+# =============================================================================
+
+# Backup files
+*.backup
+*.bak
+*.orig
+*_backup
+backup_*/
+backups/
+
+# Database backups
+db_backup_*/
+*.sql.gz
+*.dump.gz
+
+# =============================================================================
+# MISC
+# =============================================================================
+
+# OS generated files
+.DS_Store?
+Icon?
+.Spotlight-V100
+.Trashes
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Images (if not part of the app)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.svg
+
+# Videos
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+
+# Audio
+*.mp3
+*.wav
+*.flac
+*.aac
+
+# =============================================================================
+# KEEP THESE FILES (NEGATION PATTERNS)
+# =============================================================================
+
+# Keep important configuration templates
+!.env.example
+!config.example.yaml
+!sample_config.py
+
+# Keep sample data for testing
+!data/sample_small.csv
+!data/test_data.json
+
+# Keep documentation
+!README.md
+!CHANGELOG.md
+!LICENSE
+!CONTRIBUTING.md
+
+# Keep important scripts
+!scripts/*.py
+!scripts/*.sh
+
+# Keep Docker files
+!Dockerfile
+!docker-compose.yml
+!.dockerignore
+
+# Keep CI/CD files
+!.github/
+!.gitlab-ci.yml
+!Jenkinsfile
+
+# =============================================================================
+# PROJECT-SPECIFIC
+# =============================================================================
+
+# Healthcare Cost Navigator specific
+# ETL processing temp files
+etl_temp/
+data_processing_temp/
+
+# AI model cache (if caching OpenAI responses)
+ai_cache/
+.openai_cache/
+
+# Provider data cache
+provider_cache/
+.provider_data_cache/
+
+# Generated reports
+reports/*.pdf
+reports/*.xlsx
+reports/generated_*
+
+# Test outputs
+test_outputs/
+test_results/
+
+# Performance benchmarks
+benchmark_results/
+*.benchmark

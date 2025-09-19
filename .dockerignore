@@ -1,0 +1,356 @@
+# Healthcare Cost Navigator - Docker Ignore File
+# Exclude unnecessary files from Docker build context
+
+# =============================================================================
+# VERSION CONTROL
+# =============================================================================
+.git
+.gitignore
+.gitattributes
+.github/
+.gitlab-ci.yml
+
+# =============================================================================
+# DOCUMENTATION
+# =============================================================================
+README.md
+CHANGELOG.md
+LICENSE
+CONTRIBUTING.md
+docs/
+*.md
+
+# =============================================================================
+# DOCKER FILES
+# =============================================================================
+Dockerfile
+docker-compose.yml
+docker-compose.*.yml
+.dockerignore
+
+# =============================================================================
+# ENVIRONMENT & CONFIGURATION
+# =============================================================================
+.env
+.env.*
+*.env
+.env.example
+
+# Local configuration files
+config/local.*
+config/development.*
+local_config.py
+
+# =============================================================================
+# PYTHON
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.virtualenv
+
+# Python cache
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# =============================================================================
+# DEVELOPMENT TOOLS
+# =============================================================================
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Vim
+[._]*.s[a-v][a-z]
+[._]*.sw[a-p]
+[._]s[a-rt-v][a-z]
+Session.vim
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# =============================================================================
+# TESTING
+# =============================================================================
+tests/
+test/
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+coverage.xml
+nosetests.xml
+
+# Test outputs
+test_outputs/
+test_results/
+benchmark_results/
+
+# =============================================================================
+# LOGS & TEMPORARY FILES
+# =============================================================================
+
+# Log files
+*.log
+*.log.*
+logs/
+log_*/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+.cache/
+
+# =============================================================================
+# DATA FILES
+# =============================================================================
+
+# Large data files (keep small samples for testing)
+data/*.csv
+data/*.xlsx
+data/*.json
+data/*.parquet
+
+# Exclude specific large files but keep small test data
+!data/sample_small.csv
+!data/test_data.json
+
+# Processed data directories
+data/processed/
+data/temp/
+data/backup/
+
+# ETL temporary files
+etl_temp/
+*.backup
+
+# =============================================================================
+# DATABASE
+# =============================================================================
+
+# SQLite databases
+*.sqlite
+*.sqlite3
+*.db
+
+# Database dumps
+*.sql
+*.dump
+
+# Migration files (comment out if you want to include them)
+# alembic/versions/
+
+# =============================================================================
+# SECRETS & CREDENTIALS
+# =============================================================================
+
+# API keys and secrets
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# SSH keys
+id_rsa*
+id_dsa*
+id_ed25519*
+
+# =============================================================================
+# MONITORING & LOGS
+# =============================================================================
+
+# Application logs
+access.log
+error.log
+app.log
+uvicorn.log
+
+# Monitoring data
+metrics/
+monitoring/
+*.metrics
+
+# =============================================================================
+# DEPLOYMENT
+# =============================================================================
+
+# Kubernetes files
+k8s/
+kubernetes/
+*.k8s.yaml
+helm/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Deployment scripts
+deploy.sh
+deploy_*.sh
+*.deploy
+
+# =============================================================================
+# NODE.JS (if using for frontend)
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn
+package-lock.json
+yarn.lock
+
+# =============================================================================
+# OPERATING SYSTEM
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# =============================================================================
+# ARCHIVES & MEDIA
+# =============================================================================
+
+# Archives
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Media files (unless required by app)
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.mp4
+*.avi
+*.mov
+*.mp3
+*.wav
+
+# =============================================================================
+# PROJECT-SPECIFIC EXCLUDES
+# =============================================================================
+
+# Reports and outputs
+reports/
+output/
+generated/
+
+# Cache directories
+.cache/
+cache/
+.openai_cache/
+
+# User-specific files
+.user
+.local
+personal_notes.txt
+scratch.py
+
+# Performance profiling
+*.prof
+profile_output/
+
+# =============================================================================
+# KEEP THESE FILES (NEGATION PATTERNS)
+# =============================================================================
+
+# Always include these important files
+!requirements.txt
+!app/
+!scripts/setup.sh
+
+# Include small sample data files
+!data/sample_small.csv
+!data/test_*.json
+
+# Include configuration templates
+!config.example.yaml
+!.env.example
+
+# Include essential scripts
+!scripts/*.py
+
+# =============================================================================
+# SIZE OPTIMIZATION TIPS
+# =============================================================================
+
+# This .dockerignore file helps reduce Docker build context size by excluding:
+# 1. Development files and tools
+# 2. Version control history
+# 3. Large data files
+# 4. Temporary and cache files
+# 5. Documentation and non-essential files
+
+# To check build context size:
+#   docker build --no-cache -t test . 2>&1 | grep "Sending build context"
+
+# To see what files are being sent to Docker daemon:
+#   docker build --dry-run . 2>&1 | grep "Step"
+
+# =============================================================================
+# VERIFICATION
+# =============================================================================
+
+# To verify this file is working:
+# 1. Run: docker build . 2>&1 | head -5
+# 2. Check that "Sending build context" shows reasonable size
+# 3. Verify excluded files don't appear in build output
+
+# Expected build context should be under 10MB for this project
+# (excluding large data files)
