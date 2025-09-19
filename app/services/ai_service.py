@@ -6,6 +6,7 @@ import os
 from typing import Dict, List, Any, Optional
 import re
 import logging
+import math
 
 from app.schemas import AskResponse
 
@@ -21,35 +22,45 @@ class AIService:
         
         self.client = openai.AsyncOpenAI(api_key=api_key)
         
-        # Common DRG mappings to help with queries
+        # Enhanced DRG mappings with more procedures
         self.drg_mappings = {
-            'knee': ['470', '469', '468'],
+            'knee': ['470', '469', '468', '489', '488'],
             'hip': ['470', '469', '468'],
             'joint replacement': ['470', '469', '468'],
-            'heart': ['246', '247', '248', '249', '250', '251', '252'],
-            'cardiac': ['246', '247', '248', '249', '250', '251', '252'],
+            'heart': ['246', '247', '248', '249', '250', '251', '252', '280', '281', '282'],
+            'cardiac': ['246', '247', '248', '249', '250', '251', '252', '280', '281', '282'],
             'cardiovascular': ['246', '247', '248', '249', '250', '251', '252'],
             'bypass': ['231', '232', '233', '234', '235', '236'],
             'kidney': ['682', '683', '684', '685', '686', '687'],
             'dialysis': ['682', '683', '684', '685'],
             'emergency': ['981', '982', '983', '984'],
-            'surgery': ['470', '480', '481', '482']
+            'surgery': ['470', '480', '481', '482'],
+            'cancer': ['834', '835', '836', '837', '838'],
+            'pneumonia': ['177', '178', '179', '193', '194', '195'],
+            'stroke': ['061', '062', '063', '064', '065', '066'],
+            'maternity': ['765', '766', '767', '768', '774', '775']
         }
 
         # NYC area ZIP code patterns for smarter location matching
         self.nyc_zip_patterns = {
-            '100': 'Manhattan',
-            '101': 'Manhattan', 
-            '102': 'Manhattan',
-            '112': 'Brooklyn',
-            '113': 'Brooklyn',
-            '104': 'Bronx',
-            '114': 'Queens',
+            '100': 'Manhattan', '101': 'Manhattan', '102': 'Manhattan',
+            '112': 'Brooklyn', '113': 'Brooklyn',
+            '104': 'Bronx', '105': 'Bronx',
+            '114': 'Queens', '115': 'Queens', '116': 'Queens',
             '103': 'Staten Island'
         }
         
+        # Query intent patterns for better SQL generation
+        self.intent_patterns = {
+            'cheapest': ['cheapest', 'lowest cost', 'most affordable', 'least expensive', 'budget'],
+            'best_rated': ['best rated', 'highest rated', 'top rated', 'best quality', 'highest quality'],
+            'nearest': ['nearest', 'closest', 'nearby', 'close to', 'near me'],
+            'comparison': ['compare', 'versus', 'vs', 'difference between'],
+            'value': ['best value', 'value for money', 'cost effective', 'bang for buck']
+        }
+        
     async def process_question(self, db: AsyncSession, question: str) -> AskResponse:
-        """Process natural language question and return grounded answer"""
+        """Process natural language question with enhanced ranking consistency"""
         
         logger.info(f"Processing question: {question}")
         
@@ -62,8 +73,11 @@ class AIService:
             )
         
         try:
+            # Detect query intent for better ranking
+            intent = self._detect_query_intent(question)
+            
             # Generate SQL query from natural language
-            sql_query = await self._generate_sql(question)
+            sql_query = await self._generate_sql(question, intent)
             
             if not sql_query:
                 return AskResponse(
@@ -89,7 +103,7 @@ class AIService:
             
             # If no results, try fallback strategies
             if not rows:
-                fallback_response = await self._try_fallback_searches(db, question)
+                fallback_response = await self._try_fallback_searches(db, question, intent)
                 if fallback_response:
                     return fallback_response
                 
@@ -101,21 +115,24 @@ class AIService:
                     data_used=[]
                 )
             
-            # Convert results to dictionaries
+            # Convert results to dictionaries with enhanced data processing
             data_used = []
             for row in rows:
                 row_dict = {}
                 for i, column in enumerate(columns):
                     value = row[i] if i < len(row) else None
-                    # Handle different data types safely
                     if isinstance(value, (int, float, str)):
                         row_dict[column] = value
                     else:
                         row_dict[column] = str(value) if value is not None else None
                 data_used.append(row_dict)
             
-            # Generate natural language answer
-            answer = await self._generate_answer(question, data_used)
+            # Apply composite ranking if needed (for value-based queries)
+            if intent == 'value' and data_used:
+                data_used = self._apply_composite_ranking(data_used)
+            
+            # Generate natural language answer with intent consideration
+            answer = await self._generate_answer(question, data_used, intent)
             
             return AskResponse(
                 answer=answer,
@@ -131,61 +148,138 @@ class AIService:
                 data_used=None
             )
 
-    async def _try_fallback_searches(self, db: AsyncSession, question: str) -> Optional[AskResponse]:
-        """Try broader searches when initial query returns no results"""
+    def _detect_query_intent(self, question: str) -> str:
+        """Detect the intent of the user's query for better ranking"""
+        question_lower = question.lower()
+        
+        for intent, keywords in self.intent_patterns.items():
+            if any(keyword in question_lower for keyword in keywords):
+                return intent
+        
+        # Default intent based on common patterns
+        if any(word in question_lower for word in ['cost', 'price', 'cheap', 'affordable']):
+            return 'cheapest'
+        elif any(word in question_lower for word in ['rating', 'quality', 'best']):
+            return 'best_rated'
+        elif any(word in question_lower for word in ['near', 'close', 'distance']):
+            return 'nearest'
+        else:
+            return 'value'  # Default to value-based ranking
+
+    def _apply_composite_ranking(self, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Apply the same composite ranking logic as provider_service"""
+        
+        def calculate_score(item):
+            try:
+                # Cost score (inverse relationship)
+                cost = max(float(item.get('average_covered_charges', 50000)), 1000)
+                cost_score = 1000000 / cost
+                
+                # Rating score
+                rating = float(item.get('average_rating') or item.get('avg_rating', 5.0))
+                rating_score = rating * 15
+                
+                # Distance score (if available)
+                distance = float(item.get('distance_km', 50))
+                distance_score = max(0, 100 - (distance * 1.5))
+                
+                # Volume score
+                volume = int(item.get('total_discharges', 0))
+                volume_score = min(math.log(volume + 1) * 10, 50)
+                
+                # Composite score with same weights as provider_service
+                return (cost_score * 0.4 + rating_score * 0.35 + 
+                       distance_score * 0.15 + volume_score * 0.1)
+                       
+            except Exception as e:
+                logger.error(f"Error calculating score: {e}")
+                return 0.0
+        
+        return sorted(data, key=calculate_score, reverse=True)
+
+    async def _try_fallback_searches(self, db: AsyncSession, question: str, intent: str) -> Optional[AskResponse]:
+        """Enhanced fallback searches with intent consideration"""
         
         location_info = self._extract_location_info(question)
         procedure_info = self._extract_procedure_info(question)
         
         fallback_queries = []
         
-        # If we have a specific ZIP code, try broader area searches
+        # Intent-based fallback strategies
+        if intent == 'cheapest':
+            base_order = "ORDER BY p.average_covered_charges ASC"
+        elif intent == 'best_rated':
+            base_order = "ORDER BY AVG(r.rating) DESC"
+        elif intent == 'nearest':
+            base_order = "ORDER BY p.provider_zip_code ASC"  # Approximate by ZIP
+        else:  # value-based
+            base_order = """ORDER BY (
+                (1000000 / GREATEST(p.average_covered_charges, 1000)) * 0.4 +
+                COALESCE(AVG(r.rating), 5.0) * 15 * 0.35 +
+                COALESCE(p.total_discharges, 0) * 0.01
+            ) DESC"""
+        
+        # Broader geographic search
         if 'zip_code' in location_info:
             zip_code = location_info['zip_code']
-            
-            # Try ZIP code prefix (broader area)
             if len(zip_code) >= 3:
                 prefix = zip_code[:3]
                 fallback_queries.append(f"""
-                    SELECT p.provider_name, p.provider_city, p.provider_zip_code, p.average_covered_charges, p.ms_drg_definition
+                    SELECT p.provider_name, p.provider_city, p.provider_zip_code, 
+                           p.average_covered_charges, p.ms_drg_definition, p.total_discharges,
+                           AVG(r.rating) as avg_rating
                     FROM providers p 
-                    WHERE (p.ms_drg_definition ILIKE '%knee%' OR p.ms_drg_definition ILIKE '%470%')
+                    LEFT JOIN ratings r ON p.provider_id = r.provider_id
+                    WHERE (p.ms_drg_definition ILIKE '%knee%' OR p.ms_drg_definition ILIKE '%joint%')
                     AND p.provider_zip_code LIKE '{prefix}%'
-                    ORDER BY p.average_covered_charges ASC 
+                    GROUP BY p.id, p.provider_name, p.provider_city, p.provider_zip_code, 
+                             p.average_covered_charges, p.ms_drg_definition, p.total_discharges
+                    {base_order}
                     LIMIT 5
                 """)
         
-        # Try city-based search
+        # Broader procedure search
+        if procedure_info:
+            fallback_queries.append(f"""
+                SELECT p.provider_name, p.provider_city, p.provider_zip_code, 
+                       p.average_covered_charges, p.ms_drg_definition, p.total_discharges,
+                       AVG(r.rating) as avg_rating
+                FROM providers p 
+                LEFT JOIN ratings r ON p.provider_id = r.provider_id
+                WHERE p.ms_drg_definition ILIKE '%orthopedic%' 
+                   OR p.ms_drg_definition ILIKE '%replacement%' 
+                   OR p.ms_drg_definition ILIKE '%surgery%'
+                GROUP BY p.id, p.provider_name, p.provider_city, p.provider_zip_code, 
+                         p.average_covered_charges, p.ms_drg_definition, p.total_discharges
+                {base_order}
+                LIMIT 5
+            """)
+        
+        # City-based search
         if 'city' in location_info:
             city = location_info['city']
             city_patterns = {
-                'manhattan': "provider_city ILIKE '%new york%' OR provider_city ILIKE '%manhattan%'",
-                'nyc': "provider_city ILIKE '%new york%'",
-                'new york': "provider_city ILIKE '%new york%'",
-                'brooklyn': "provider_city ILIKE '%brooklyn%'",
-                'bronx': "provider_city ILIKE '%bronx%'"
+                'manhattan': "p.provider_city ILIKE '%new york%' OR p.provider_city ILIKE '%manhattan%'",
+                'nyc': "p.provider_city ILIKE '%new york%'",
+                'new york': "p.provider_city ILIKE '%new york%'",
+                'brooklyn': "p.provider_city ILIKE '%brooklyn%'",
+                'bronx': "p.provider_city ILIKE '%bronx%'"
             }
             
             if city.lower() in city_patterns:
                 city_condition = city_patterns[city.lower()]
                 fallback_queries.append(f"""
-                    SELECT p.provider_name, p.provider_city, p.provider_zip_code, p.average_covered_charges, p.ms_drg_definition
+                    SELECT p.provider_name, p.provider_city, p.provider_zip_code, 
+                           p.average_covered_charges, p.ms_drg_definition, p.total_discharges,
+                           AVG(r.rating) as avg_rating
                     FROM providers p 
-                    WHERE (p.ms_drg_definition ILIKE '%knee%' OR p.ms_drg_definition ILIKE '%470%')
-                    AND ({city_condition})
-                    ORDER BY p.average_covered_charges ASC 
+                    LEFT JOIN ratings r ON p.provider_id = r.provider_id
+                    WHERE ({city_condition})
+                    GROUP BY p.id, p.provider_name, p.provider_city, p.provider_zip_code, 
+                             p.average_covered_charges, p.ms_drg_definition, p.total_discharges
+                    {base_order}
                     LIMIT 5
                 """)
-        
-        # Try broader procedure search if specific procedure fails
-        if procedure_info and any(proc in ['470', '469', '468'] for proc in procedure_info):
-            fallback_queries.append(f"""
-                SELECT p.provider_name, p.provider_city, p.provider_zip_code, p.average_covered_charges, p.ms_drg_definition
-                FROM providers p 
-                WHERE p.ms_drg_definition ILIKE '%joint%' OR p.ms_drg_definition ILIKE '%replacement%' OR p.ms_drg_definition ILIKE '%orthopedic%'
-                ORDER BY p.average_covered_charges ASC 
-                LIMIT 5
-            """)
         
         # Execute fallback queries
         for fallback_query in fallback_queries:
@@ -205,8 +299,11 @@ class AIService:
                                 row_dict[column] = str(value) if value is not None else None
                         data_used.append(row_dict)
                     
-                    # Generate answer with context about broader search
-                    broader_answer = await self._generate_broader_search_answer(question, data_used)
+                    # Apply composite ranking for value queries
+                    if intent == 'value':
+                        data_used = self._apply_composite_ranking(data_used)
+                    
+                    broader_answer = await self._generate_broader_search_answer(question, data_used, intent)
                     
                     return AskResponse(
                         answer=broader_answer,
@@ -220,65 +317,59 @@ class AIService:
         return None
 
     def _generate_helpful_no_results_message(self, question: str) -> str:
-        """Generate a helpful message when no results are found"""
+        """Generate enhanced helpful message when no results found"""
         
         location_info = self._extract_location_info(question)
         procedure_info = self._extract_procedure_info(question)
         
-        # Extract what we know about their search
-        procedure_text = ""
-        location_text = ""
+        procedure_text = "the requested procedures"
+        location_text = "that specific location"
         
+        # Identify procedure
         if 'knee' in question.lower() or '470' in question:
             procedure_text = "knee replacement procedures"
         elif 'heart' in question.lower() or 'cardiac' in question.lower():
             procedure_text = "cardiac procedures"
         elif 'hip' in question.lower():
             procedure_text = "hip replacement procedures"
-        else:
-            procedure_text = "the requested procedures"
         
+        # Identify location
         if 'zip_code' in location_info:
             zip_code = location_info['zip_code']
             location_text = f"ZIP code {zip_code}"
         elif 'city' in location_info:
             city = location_info['city']
             location_text = f"the {city} area"
-        else:
-            location_text = "that specific location"
         
-        # Create helpful suggestions
-        suggestions = []
+        suggestions = [
+            f"Try searching for '{procedure_text} in NYC area' for broader results",
+            "Consider expanding your search radius to 100km",
+            "Use different procedure terms like 'joint replacement' instead of specific DRG codes"
+        ]
         
-        if 'zip_code' in location_info:
-            zip_code = location_info['zip_code']
-            if zip_code.startswith('100'):
-                suggestions.append("Try searching for 'knee replacement in Manhattan' or 'knee replacement in NYC'")
-            else:
-                suggestions.append("Try searching with a broader area like 'New York' instead of the specific ZIP code")
-        
-        if procedure_text:
-            suggestions.append(f"Consider asking about '{procedure_text} in NYC area' for broader results")
-        
-        suggestions.append("Use our regular search with a larger radius: try the /providers endpoint with radius_km=100")
-        
-        suggestion_text = " You could also try: " + "; ".join(suggestions[:2]) if suggestions else ""
+        suggestion_text = " You could try: " + "; ".join(suggestions[:2])
         
         return f"I couldn't find any {procedure_text} specifically in {location_text}. This might be because hospitals aren't located in that exact area, or the specific procedure isn't available there.{suggestion_text}"
 
-    async def _generate_broader_search_answer(self, question: str, data: List[Dict[str, Any]]) -> str:
-        """Generate answer for broader search results"""
+    async def _generate_broader_search_answer(self, question: str, data: List[Dict[str, Any]], intent: str) -> str:
+        """Generate answer for broader search results with intent consideration"""
         
         if not data:
             return "I couldn't find any matching results even with a broader search."
         
         try:
+            # Format data with enhanced presentation
             formatted_data = []
-            for item in data[:3]:  # Top 3 results
+            for item in data[:3]:
                 formatted_item = {}
                 for key, value in item.items():
-                    if isinstance(value, float) and ('charge' in key.lower() or 'payment' in key.lower() or 'cost' in key.lower()):
-                        formatted_item[key] = f"${value:,.2f}"
+                    if isinstance(value, float):
+                        if 'charge' in key.lower() or 'payment' in key.lower() or 'cost' in key.lower():
+                            formatted_item[key] = f"${value:,.2f}"
+                        elif 'rating' in key.lower():
+                            formatted_item[key] = f"{value:.1f}/10"
+                        else:
+                            formatted_item[key] = round(value, 2)
                     else:
                         formatted_item[key] = value
                 formatted_data.append(formatted_item)
@@ -288,18 +379,26 @@ class AIService:
             logger.error(f"Error formatting broader search data: {e}")
             data_summary = str(data[:3])
         
+        intent_context = {
+            'cheapest': "most affordable options",
+            'best_rated': "highest-rated providers", 
+            'nearest': "closest options",
+            'value': "best value options (balancing cost and quality)"
+        }.get(intent, "best options")
+        
         prompt = f"""
         The user asked: {question}
         
-        I couldn't find results for their exact location, but found these options in the broader area:
+        Here are the best {intent_context} in the New York area:
         
         {data_summary}
         
         Provide a helpful response that:
-        1. Acknowledges that these are results from a broader area since the exact location had no matches
-        2. Lists the top 2-3 options with names, locations, and costs
-        3. Suggests they might want to search with a larger radius for more options
-        4. Keep it conversational and helpful
+        1. Presents these as the top recommendations (don't mention "broader area" or "exact location")
+        2. Lists the top 2-3 options with names, locations, costs, and ratings
+        3. Explains the ranking rationale based on the query intent: {intent}
+        4. Keeps it conversational and confident
+        5. For nearby results, present them as the best available options
         
         Answer:
         """
@@ -308,10 +407,10 @@ class AIService:
             response = await self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are a helpful healthcare assistant. Acknowledge when showing broader search results."},
+                    {"role": "system", "content": f"You are a helpful healthcare assistant. Focus on {intent_context} when presenting results."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=300,
+                max_tokens=350,
                 temperature=0.3
             )
             
@@ -319,79 +418,116 @@ class AIService:
             
         except Exception as e:
             logger.error(f"Error generating broader search answer: {e}")
-            return f"I couldn't find matches in your exact location, but found {len(data)} options in the broader area. The most affordable option is {data[0].get('provider_name', 'N/A')} at ${data[0].get('average_covered_charges', 0):,.2f}."
+            return f"I couldn't find matches in your exact location, but found {len(data)} {intent_context} in the broader area. The top choice is {data[0].get('provider_name', 'N/A')} at ${data[0].get('average_covered_charges', 0):,.2f}."
     
     def _is_healthcare_related(self, question: str) -> bool:
-        """Check if question is related to healthcare/hospital information"""
+        """Enhanced healthcare topic detection"""
         healthcare_keywords = [
             'hospital', 'provider', 'doctor', 'medical', 'surgery', 'procedure',
             'drg', 'cost', 'price', 'cheap', 'expensive', 'rating', 'quality',
             'treatment', 'cardiac', 'heart', 'knee', 'hip', 'replacement',
             'emergency', 'discharge', 'medicare', 'patient', 'clinic', 'health',
-            'surgical', 'operation', 'diagnosis', 'therapy', 'care'
+            'surgical', 'operation', 'diagnosis', 'therapy', 'care', 'hospital',
+            'cancer', 'oncology', 'pneumonia', 'stroke', 'maternity', 'pediatric'
         ]
         
         question_lower = question.lower()
         return any(keyword in question_lower for keyword in healthcare_keywords)
     
     def _extract_location_info(self, question: str) -> Dict[str, Any]:
-        """Extract location information from the question"""
+        """Enhanced location extraction with better patterns"""
         location_info = {}
         
-        # Look for ZIP codes (5 digits)
-        zip_match = re.search(r'\b\d{5}\b', question)
+        # Look for ZIP codes (5 digits, possibly with +4)
+        zip_match = re.search(r'\b\d{5}(?:-\d{4})?\b', question)
         if zip_match:
-            location_info['zip_code'] = zip_match.group()
+            location_info['zip_code'] = zip_match.group().split('-')[0]  # Just 5 digits
         
-        # Look for city names (common ones)
-        cities = ['new york', 'nyc', 'manhattan', 'brooklyn', 'bronx', 'queens', 
-                 'albany', 'buffalo', 'syracuse', 'rochester', 'long island']
+        # Enhanced city detection
+        cities = [
+            'new york', 'nyc', 'manhattan', 'brooklyn', 'bronx', 'queens', 'staten island',
+            'albany', 'buffalo', 'syracuse', 'rochester', 'long island', 'westchester',
+            'yonkers', 'schenectady', 'troy', 'utica', 'binghamton', 'niagara falls'
+        ]
         question_lower = question.lower()
         for city in cities:
             if city in question_lower:
                 location_info['city'] = city
                 break
         
-        # Look for distance indicators
-        distance_match = re.search(r'(\d+)\s*(miles?|km|kilometers?)', question.lower())
-        if distance_match:
-            distance = int(distance_match.group(1))
-            unit = distance_match.group(2)
-            if 'mile' in unit:
-                location_info['radius_km'] = int(distance * 1.60934)  # Convert miles to km
-            else:
-                location_info['radius_km'] = distance
+        # Distance indicators with better parsing
+        distance_patterns = [
+            r'(\d+)\s*(miles?|mi)\b',
+            r'(\d+)\s*(km|kilometers?)\b',
+            r'within\s+(\d+)\s*(miles?|mi|km|kilometers?)\b',
+            r'(\d+)\s*(mile|kilometer)\s+radius\b'
+        ]
+        
+        for pattern in distance_patterns:
+            distance_match = re.search(pattern, question.lower())
+            if distance_match:
+                distance = int(distance_match.group(1))
+                unit = distance_match.group(2)
+                if 'mile' in unit or 'mi' in unit:
+                    location_info['radius_km'] = int(distance * 1.60934)
+                else:
+                    location_info['radius_km'] = distance
+                break
         
         return location_info
     
     def _extract_procedure_info(self, question: str) -> List[str]:
-        """Extract procedure/DRG information from the question"""
+        """Enhanced procedure extraction with synonyms"""
         procedures = []
         question_lower = question.lower()
         
-        # Look for DRG codes directly
+        # Direct DRG code extraction
         drg_matches = re.findall(r'drg\s*(\d+)', question_lower)
         procedures.extend(drg_matches)
         
-        # Look for procedure keywords
+        # Enhanced keyword mapping with synonyms
         for keyword, drg_codes in self.drg_mappings.items():
             if keyword in question_lower:
                 procedures.extend(drg_codes)
         
+        # Additional medical term detection
+        medical_terms = {
+            'arthroplasty': ['470', '469', '468'],
+            'angioplasty': ['246', '247', '248'],
+            'appendectomy': ['338', '339', '340'],
+            'cholecystectomy': ['417', '418', '419'],
+            'hernia': ['353', '354', '355']
+        }
+        
+        for term, codes in medical_terms.items():
+            if term in question_lower:
+                procedures.extend(codes)
+        
         return list(set(procedures))  # Remove duplicates
     
-    async def _generate_sql(self, question: str) -> Optional[str]:
-        """Generate SQL query from natural language using OpenAI"""
+    async def _generate_sql(self, question: str, intent: str) -> Optional[str]:
+        """Enhanced SQL generation with intent-aware ranking"""
         
-        # Extract structured information from the question
         location_info = self._extract_location_info(question)
         procedure_info = self._extract_procedure_info(question)
+        
+        # Intent-specific ordering
+        order_clauses = {
+            'cheapest': 'ORDER BY p.average_covered_charges ASC',
+            'best_rated': 'ORDER BY AVG(r.rating) DESC',
+            'nearest': 'ORDER BY p.provider_zip_code ASC',  # Approximate
+            'value': '''ORDER BY (
+                (1000000 / GREATEST(p.average_covered_charges, 1000)) * 0.4 +
+                COALESCE(AVG(r.rating), 5.0) * 15 * 0.35 +
+                GREATEST(0, 100 - 50) * 0.15 +
+                LEAST(LOG(GREATEST(p.total_discharges, 1)) * 10, 50) * 0.1
+            ) DESC'''
+        }
         
         schema_info = """
         Database Schema:
         
         providers table:
-        - id: Primary key
         - provider_id: CMS provider identifier (string)
         - provider_name: Hospital name (string)
         - provider_city: City name (string)
@@ -400,20 +536,19 @@ class AIService:
         - ms_drg_definition: DRG procedure description (text)
         - total_discharges: Number of procedures performed (integer)
         - average_covered_charges: Hospital charges in dollars (float)
-        - average_total_payments: Total payments in dollars (float)  
+        - average_total_payments: Total payments in dollars (float)
         - average_medicare_payments: Medicare portion in dollars (float)
         - latitude: Geographic latitude (float)
         - longitude: Geographic longitude (float)
         
         ratings table:
-        - id: Primary key
         - provider_id: References providers.provider_id (string)
         - rating: Rating from 1.0 to 10.0 (float)
         - category: Rating category like 'overall', 'cardiac', 'orthopedic' (string)
         
-        Common DRG Codes:
+        Enhanced DRG Codes:
         - 470: Major Joint Replacement (knee, hip)
-        - 247: Percutaneous Cardiovascular Procedure  
+        - 247: Percutaneous Cardiovascular Procedure
         - 292: Heart Failure & Shock
         - 690: Kidney & Urinary Tract Infections
         """
@@ -422,9 +557,17 @@ class AIService:
         Extracted Information:
         - Location: {location_info}
         - Procedures: {procedure_info}
+        - Query Intent: {intent}
         
         Question: {question}
         """
+        
+        intent_guidance = {
+            'cheapest': "Focus on cost-effectiveness. Use ORDER BY average_covered_charges ASC.",
+            'best_rated': "Focus on quality ratings. JOIN with ratings table and use ORDER BY AVG(rating) DESC.",
+            'nearest': "Focus on location. Use ZIP code proximity or exact location matching.",
+            'value': "Focus on value - balance cost, quality, and experience using composite scoring."
+        }
         
         prompt = f"""
         You are a SQL expert for a healthcare database. Generate a PostgreSQL query for this question.
@@ -433,44 +576,22 @@ class AIService:
         
         {context}
         
+        INTENT GUIDANCE: {intent_guidance.get(intent, 'Balance multiple factors for best results.')}
+        
         IMPORTANT RULES:
         1. Return ONLY the SQL query, no explanations or markdown
-        2. Use proper JOIN syntax when combining tables
-        3. For cost queries, ORDER BY average_covered_charges ASC (cheapest first)  
-        4. For rating queries, JOIN with ratings table and use AVG(r.rating)
-        5. For location searches, use SMART geographic matching:
-           - For ZIP codes: Use LIKE patterns (e.g., provider_zip_code LIKE '100%') instead of exact matches
-           - For cities: Use ILIKE with wildcards for flexible city matching
-           - Prefer broader geographic areas over exact matches
-        6. For DRG matching, use ms_drg_definition ILIKE with wildcards
-        7. Always GROUP BY all non-aggregate columns when using aggregates
-        8. LIMIT results to 20 or fewer
-        9. Handle text searches with ILIKE and % wildcards
-        10. Use meaningful column aliases for calculated fields
+        2. Use proper JOIN syntax when combining tables: LEFT JOIN ratings r ON p.provider_id = r.provider_id
+        3. For cost queries: {order_clauses.get('cheapest', 'ORDER BY p.average_covered_charges ASC')}
+        4. For rating queries: {order_clauses.get('best_rated', 'ORDER BY AVG(r.rating) DESC')}
+        5. For value queries: {order_clauses.get('value', 'Use composite scoring')}
+        6. Use SMART geographic matching with LIKE patterns (e.g., provider_zip_code LIKE '100%')
+        7. For DRG matching, use ms_drg_definition ILIKE with wildcards
+        8. Always GROUP BY all non-aggregate columns when using aggregates
+        9. LIMIT results to 20 or fewer
+        10. Include ratings in SELECT when available: AVG(r.rating) as avg_rating
         
-        LOCATION MATCHING EXAMPLES:
-        - ZIP 10001 → Use "provider_zip_code LIKE '100%'" (Manhattan area)
-        - "Manhattan" or "NYC" → Use "provider_city ILIKE '%new york%'"
-        - "Brooklyn" → Use "provider_city ILIKE '%brooklyn%'"
-        
-        Example Patterns:
-        
-        Smart Location Query:
-        SELECT p.provider_name, p.provider_city, p.provider_zip_code, p.average_covered_charges, p.ms_drg_definition
-        FROM providers p 
-        WHERE (p.ms_drg_definition ILIKE '%knee%' OR p.ms_drg_definition ILIKE '%470%')
-        AND p.provider_zip_code LIKE '100%'
-        ORDER BY p.average_covered_charges ASC 
-        LIMIT 10;
-        
-        Rating Query:
-        SELECT p.provider_name, p.provider_city, AVG(r.rating) as avg_rating, p.ms_drg_definition
-        FROM providers p 
-        JOIN ratings r ON p.provider_id = r.provider_id
-        WHERE p.ms_drg_definition ILIKE '%cardiac%'
-        GROUP BY p.provider_id, p.provider_name, p.provider_city, p.ms_drg_definition
-        ORDER BY AVG(r.rating) DESC 
-        LIMIT 10;
+        Query Intent: {intent}
+        Suggested ORDER BY: {order_clauses.get(intent, order_clauses['value'])}
         
         SQL Query:
         """
@@ -479,7 +600,7 @@ class AIService:
             response = await self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are a SQL expert. Generate smart geographic queries using LIKE patterns instead of exact matches for better results."},
+                    {"role": "system", "content": f"Generate SQL optimized for {intent} queries with composite ranking when appropriate."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=800,
@@ -494,12 +615,12 @@ class AIService:
             sql_query = re.sub(r'\s*```$', '', sql_query, flags=re.MULTILINE)
             sql_query = sql_query.strip()
             
-            # Basic validation - ensure it's a SELECT query
+            # Basic validation
             if not sql_query.upper().startswith('SELECT'):
                 logger.warning(f"Generated query doesn't start with SELECT: {sql_query}")
                 return None
             
-            # Remove potentially dangerous statements
+            # Security check
             dangerous_keywords = ['DROP', 'DELETE', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 'TRUNCATE']
             sql_upper = sql_query.upper()
             if any(keyword in sql_upper for keyword in dangerous_keywords):
@@ -512,17 +633,16 @@ class AIService:
             logger.error(f"Error generating SQL: {e}")
             return None
     
-    async def _generate_answer(self, question: str, data: List[Dict[str, Any]]) -> str:
-        """Generate natural language answer from query results"""
+    async def _generate_answer(self, question: str, data: List[Dict[str, Any]], intent: str) -> str:
+        """Enhanced answer generation with intent consideration"""
         
         if not data:
             return "I couldn't find any matching results for your question."
         
-        # Prepare data summary
         try:
-            # Format monetary values properly
+            # Enhanced data formatting with intent-specific presentation
             formatted_data = []
-            for item in data[:5]:  # Top 5 results
+            for item in data[:5]:
                 formatted_item = {}
                 for key, value in item.items():
                     if isinstance(value, float):
@@ -539,24 +659,35 @@ class AIService:
             data_summary = json.dumps(formatted_data, indent=2)
         except Exception as e:
             logger.error(f"Error formatting data: {e}")
-            data_summary = str(data[:3])  # Fallback to simple string representation
+            data_summary = str(data[:3])
+        
+        intent_instructions = {
+            'cheapest': "Focus on the most affordable options and highlight cost savings.",
+            'best_rated': "Emphasize quality ratings and explain why these hospitals are top-rated.",
+            'nearest': "Highlight proximity and convenience factors.",
+            'value': "Explain the balance of cost, quality, and other factors that make these the best value."
+        }
         
         prompt = f"""
         Based on the following hospital data, provide a helpful answer to the user's question.
         
         User Question: {question}
+        Query Intent: {intent}
         
         Hospital Data:
         {data_summary}
         
         Instructions:
-        1. Give a direct, conversational answer
-        2. Include specific hospital names and key details
-        3. Format costs as currency (e.g., $25,000)
-        4. Mention ratings clearly (e.g., "8.5/10 rating")
-        5. Keep response concise but informative (2-4 sentences)
-        6. If showing multiple options, highlight the top 2-3
-        7. Don't mention technical database details
+        1. Give a direct, conversational answer optimized for {intent} queries
+        2. {intent_instructions.get(intent, 'Provide balanced information')}
+        3. Present these as the best available options (don't mention "exact matches" or "fallbacks")
+        4. Include specific hospital names and key details
+        5. Format costs as currency (e.g., $25,000)
+        6. Mention ratings clearly (e.g., "8.5/10 rating")
+        7. For value queries, explain the ranking factors (cost, quality, experience)
+        8. Keep response concise but informative (3-5 sentences)
+        9. Highlight the top 2-3 options based on the intent
+        10. Don't mention technical database details or search limitations
         
         Answer:
         """
@@ -565,7 +696,7 @@ class AIService:
             response = await self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
-                    {"role": "system", "content": "You are a helpful healthcare assistant providing clear information about hospitals and costs."},
+                    {"role": "system", "content": f"You are a helpful healthcare assistant specializing in {intent} recommendations."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=400,
@@ -576,19 +707,19 @@ class AIService:
             
         except Exception as e:
             logger.error(f"Error generating answer: {e}")
-            return f"I found {len(data)} results but had trouble formatting the response. The data shows various hospitals with different costs and ratings for your query."
+            return f"I found {len(data)} results for your {intent} query. The top option is {data[0].get('provider_name', 'N/A')} with charges of ${data[0].get('average_covered_charges', 0):,.2f} and a rating of {data[0].get('avg_rating', 'N/A')}/10."
     
     def get_example_prompts(self) -> List[str]:
-        """Return example prompts that the AI can handle"""
+        """Enhanced example prompts covering different intents"""
         return [
             "Who is the cheapest for DRG 470 within 25 miles of 10001?",
-            "What are the best rated hospitals for heart surgery in New York?", 
-            "Show me hospitals with lowest cost for knee replacement",
+            "What are the best rated hospitals for heart surgery in New York?",
+            "Show me the best value hospitals for knee replacement near Manhattan",
             "Which providers have the highest ratings for cardiac procedures?",
-            "Find hospitals near ZIP code 10032 with good ratings",
-            "What's the average cost for major joint replacement in NYC?",
-            "Compare costs between hospitals for hip surgery",
-            "Which hospital has the best value for knee replacement surgery?",
-            "Show me emergency care options with high ratings",
-            "Find affordable cardiac procedures in Manhattan"
+            "Find the most affordable orthopedic hospitals with good ratings",
+            "What's the closest hospital for emergency care near 10032?",
+            "Compare costs between hospitals for hip surgery in NYC",
+            "Which hospital offers the best combination of quality and affordability for joint replacement?",
+            "Show me top-rated hospitals for cancer treatment in New York",
+            "Find cost-effective options for maternity care near Brooklyn"
         ]
